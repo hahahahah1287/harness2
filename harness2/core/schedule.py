@@ -526,16 +526,20 @@ def _run_one_mode(
             work_dir=work_dir,
             pool_kind="finals",
         )
+    res.selections[mode] = sel.to_dict()
     if mode_lib and sel.ok:
-        selection.reflect_adoption(
-            task_id,
-            sel,
-            r.rollouts,
-            adapter=adapter,
-            prop=selector,
-            work_dir=work_dir,
-            decisions={stage.label: stage.notes or stage.error for stage in r.stages},
-        )
+        try:
+            selection.reflect_adoption(
+                task_id,
+                sel,
+                r.rollouts,
+                adapter=adapter,
+                prop=selector,
+                work_dir=work_dir,
+                decisions={stage.label: stage.notes or stage.error for stage in r.stages},
+            )
+        finally:
+            res.selections[mode] = sel.to_dict()
     d = sel.to_dict()
     d["chosen_run_dir"] = str(
         candidates[sel.chosen_label].run_dir if sel.chosen_label in candidates else ""
@@ -665,7 +669,11 @@ def run_task(
                 "traceback": traceback.format_exc()[-1500:],
             }
             res.selections[mode] = selection.Selection(
-                task_id=task_id, mode=mode, k=k, error=err
+                task_id=task_id,
+                mode=mode,
+                k=k,
+                error=err,
+                usd=float((res.selections.get(mode) or {}).get("usd") or 0.0),
             ).to_dict()
             res.errors.append(f"{mode}: {err}")
         res.status = "partial"

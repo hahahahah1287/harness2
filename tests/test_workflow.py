@@ -248,6 +248,28 @@ class WorkflowTests(unittest.TestCase):
         self.adapter.score.assert_not_called()
         self.assertTrue(all(not r.graded for r in rows))
 
+        class PaidReflectionProposer(DemoProposer):
+            def call(self, mission, context_dir, label, **kwargs):
+                reply = super().call(mission, context_dir, label, **kwargs)
+                if label.startswith("experience."):
+                    reply.cost_usd = 4.0
+                return reply
+
+        orig_add = Library.add
+
+        def fail_ledger1(lib_self, task_id, *a, **kw):
+            if task_id == "ledger-1":
+                raise RuntimeError("library write failed")
+            return orig_add(lib_self, task_id, *a, **kw)
+
+        with patch.object(Library, "add", autospec=True, side_effect=fail_ledger1):
+            failed_lib = self.run_stream(k=1, proposer=PaidReflectionProposer(self.proposer.spec))
+        self.assertEqual([row["status"] for row in failed_lib["tasks"]], ["partial", "skipped"])
+        after_lib_err = json.loads(summary_path.read_text())
+        for mode in ("agg", "seq"):
+            self.assertFalse(after_lib_err["selections"][mode]["ok"])
+            self.assertEqual(after_lib_err["selections"][mode]["usd"], 4.0)
+
         repaired = self.run_stream(k=1)
         self.assertEqual([row["status"] for row in repaired["tasks"]], ["ok", "skipped"])
         restored = json.loads(summary_path.read_text())
